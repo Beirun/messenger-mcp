@@ -20,7 +20,7 @@ the account's devices before it can read or send there.
 | `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
 | `list_chats` | working | none | List recent conversations. |
 | `read_messages` | working (group chats) | `chat_id`, `limit` | Read messages from a chat. End-to-end encrypted 1:1 chats return nothing for now. |
-| `send_message` | stub | `chat_id`, `text` | Send a text message. |
+| `send_message` | implemented, not live-tested | `chat_id`, `text` | Send a text message to a group chat. |
 
 ## Requirements
 

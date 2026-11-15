@@ -244,6 +244,96 @@ impl Client {
         messages.truncate(limit);
         Ok(messages)
     }
+
+    pub async fn send_text(
+        &self,
+        thread_key: &str,
+        text: &str,
+        sync_group: u8,
+    ) -> Result<Option<String>> {
+        let raw = std::fs::read_to_string(crate::auth::cookies_path()?)
+            .context("reading the cookie file")?;
+        let mut jar = CrateJar::from_json(&raw).context("parsing the cookie file")?;
+
+        let (_, _, html) = self.home_page().await?;
+        let config = page::scrape(&html)
+            .map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
+
+        let mut cursor = None;
+        for preloader in &config.preloaders {
+            if preloader.database != u32::from(sync_group) {
+                continue;
+            }
+            let steps = self.snapshot(&config, preloader).await?;
+            cursor = ls::sync_cursor(&steps);
+            if cursor.is_some() {
+                break;
+            }
+        }
+        let cursor = cursor
+            .with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
+
+        let key: i64 = thread_key
+            .parse()
+            .context("thread key must be numeric")?;
+        let otid = Utc::now().timestamp_micros();
+        let has_links = text.contains("http://") || text.contains("https://");
+        let payload = serde_json::json!({
+            "thread_id": key,
+            "otid": otid.to_string(),
+            "source": 65537,
+            "send_type": 1,
+            "sync_group": sync_group,
+            "text": text,
+            "initiating_source": 1,
+            "skip_url_preview_gen": 0,
+            "text_has_links": i32::from(has_links),
+            "multitab_env": 0,
+        });
+
+        let mut socket = Socket::connect(&config, &mut jar)
+            .await
+            .context("connecting to the gateway")?;
+        socket
+            .open_sync(cursor.database, &cursor.next)
+            .await
+            .context("opening the sync stream")?;
+
+        let deadline = TokioInstant::now() + Duration::from_secs(10);
+        while let Some(event) = socket.next_event(deadline).await? {
+            if let Event::Sync { database, .. } = event {
+                if database == cursor.database {
+                    break;
+                }
+            }
+        }
+
+        socket
+            .send_task("46", &key.to_string(), payload)
+            .await
+            .context("sending the message task")?;
+
+        let mut sent_id = None;
+        let deadline = TokioInstant::now() + Duration::from_secs(15);
+        while let Some(event) = socket.next_event(deadline).await? {
+            match event {
+                Event::Sync { database, steps } if database == cursor.database => {
+                    for op in ls::calls(&steps) {
+                        if let Some(message) = ops::message(op, Some(thread_key), sync_group) {
+                            if message.thread_key == thread_key && message.text.as_deref() == Some(text)
+                            {
+                                sent_id = Some(message.message_id);
+                            }
+                        }
+                    }
+                }
+                Event::TaskDone if sent_id.is_some() => break,
+                _ => {}
+            }
+        }
+        socket.close().await;
+        Ok(sent_id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

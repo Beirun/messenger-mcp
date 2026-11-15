@@ -230,10 +230,47 @@ impl Messenger {
         &self,
         Parameters(SendMessageArgs { chat_id, text }): Parameters<SendMessageArgs>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-            "send_message is not implemented yet (chat_id={chat_id}, {} chars)",
-            text.chars().count()
-        ))]))
+        let path = match auth::cookies_path() {
+            Ok(path) => path,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "cannot resolve the cookie path: {err:#}"
+                ))]));
+            }
+        };
+        let jar = match CookieJar::load(&path) {
+            Ok(jar) if jar.missing_required().is_empty() => jar,
+            Ok(_) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "required cookies are missing; run `messenger-mcp login`",
+                )]));
+            }
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not load cookies from {}: {err:#}",
+                    path.display()
+                ))]));
+            }
+        };
+        let client = match Client::new(jar) {
+            Ok(client) => client,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not build the client: {err:#}"
+                ))]));
+            }
+        };
+        match client.send_text(&chat_id, &text, 1).await {
+            Ok(Some(id)) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                format!("sent message {id} to {chat_id}"),
+            )])),
+            Ok(None) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "sent to {chat_id}; the message did not show up on the sync stream before the timeout"
+            ))])),
+            Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "send_message failed: {err:#}"
+            ))])),
+        }
     }
 }
 
