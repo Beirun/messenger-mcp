@@ -11,6 +11,7 @@ use rmcp::{
 use tracing_subscriber::EnvFilter;
 
 mod auth;
+mod login;
 
 use auth::CookieJar;
 
@@ -131,6 +132,12 @@ async fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
+
+    match std::env::args().nth(1).as_deref() {
+        Some("login") => return login::run().await,
+        Some(other) => anyhow::bail!("unknown command {other}; expected no arguments or \"login\""),
+        None => {}
+    }
 
     let service = Messenger::new().serve(stdio()).await.inspect_err(|e| {
         tracing::error!("serving error: {:?}", e);

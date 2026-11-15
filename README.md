@@ -31,6 +31,21 @@ Meta's Messenger endpoints.
 
 ```sh
 cargo build --release
+```
+
+Sign in once and save the session cookies:
+
+```sh
+messenger-mcp login
+```
+
+That opens Chrome at messenger.com and waits while you sign in. When the session appears,
+it saves the cookies with `600` permissions and closes the window. It uses the Chrome for
+Testing that agent-browser installed, falling back to a system Chrome.
+
+Then register the server:
+
+```sh
 claude mcp add -s user messenger-mcp -- /path/to/messenger-mcp/target/release/messenger-mcp
 ```
 
@@ -39,9 +54,11 @@ then `tools/list`), or point any MCP client at it.
 
 ## Configuration
 
-`MESSENGER_COOKIES`: path to a file with the cookies of a logged-in Messenger session.
-Both the JSON export format and the Netscape `cookies.txt` format are accepted. `status`
-reports what it finds there.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MESSENGER_COOKIES` | `~/.config/messenger-mcp/cookies.json` | Where `login` saves cookies and `status` reads them. JSON export and Netscape `cookies.txt` are both accepted. |
+| `MESSENGER_CHROME` | agent-browser's Chrome, then system Chrome | Chrome binary used by `login`. |
+| `MESSENGER_LOGIN_TIMEOUT` | `300` | Seconds `login` waits for sign-in. |
 
 ## Roadmap
 

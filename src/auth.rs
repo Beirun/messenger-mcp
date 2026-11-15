@@ -83,6 +83,7 @@ impl CookieJar {
         self.cookies.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.cookies.is_empty()
     }
@@ -105,6 +106,7 @@ impl CookieJar {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn header_for(&self, host: &str) -> String {
         self.cookies
             .iter()
@@ -115,6 +117,7 @@ impl CookieJar {
     }
 }
 
+#[allow(dead_code)]
 fn domain_matches(cookie_domain: &str, host: &str) -> bool {
     let d = cookie_domain.trim_start_matches('.');
     host == d || host.ends_with(&format!(".{d}"))
