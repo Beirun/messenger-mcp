@@ -1,9 +1,14 @@
 use std::collections::HashSet;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+use chrono::Utc;
+use messenger_client::cookies::Jar as CrateJar;
+use messenger_client::gateway::{Event, Gateway, Socket};
 use messenger_client::{graphql, ls, ops, page};
 use reqwest::Client as HttpClient;
 use serde_json::Value;
+use tokio::time::Instant as TokioInstant;
 
 use crate::auth::CookieJar;
 
@@ -154,6 +159,99 @@ impl Client {
         let data: Value = serde_json::from_str(&payload).context("parsing the snapshot")?;
         Ok(data.get("step").cloned().unwrap_or(Value::Null))
     }
+
+    pub async fn read_messages(
+        &self,
+        thread_key: &str,
+        limit: usize,
+        sync_group: u8,
+    ) -> Result<Vec<MessageSummary>> {
+        let raw = std::fs::read_to_string(crate::auth::cookies_path()?)
+            .context("reading the cookie file")?;
+        let mut jar = CrateJar::from_json(&raw).context("parsing the cookie file")?;
+
+        let (_, _, html) = self.home_page().await?;
+        let config = page::scrape(&html)
+            .map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
+
+        let mut cursor = None;
+        for preloader in &config.preloaders {
+            if preloader.database != u32::from(sync_group) {
+                continue;
+            }
+            let steps = self.snapshot(&config, preloader).await?;
+            cursor = ls::sync_cursor(&steps);
+            if cursor.is_some() {
+                break;
+            }
+        }
+        let cursor = cursor
+            .with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
+
+        let mut socket = Socket::connect(&config, &mut jar)
+            .await
+            .context("connecting to the gateway")?;
+        socket
+            .open_sync(cursor.database, &cursor.next)
+            .await
+            .context("opening the sync stream")?;
+
+        let deadline = TokioInstant::now() + Duration::from_secs(10);
+        while let Some(event) = socket.next_event(deadline).await? {
+            if let Event::Sync { database, .. } = event {
+                if database == cursor.database {
+                    break;
+                }
+            }
+        }
+
+        let key: i64 = thread_key
+            .parse()
+            .context("thread key must be numeric")?;
+        let payload = ls::fetch_messages(key, Utc::now().timestamp_millis(), sync_group);
+        socket
+            .send_task(ls::FETCH_MESSAGES, &format!("mrq.{key}"), payload)
+            .await
+            .context("sending the message request")?;
+
+        let mut messages: Vec<MessageSummary> = Vec::new();
+        let deadline = TokioInstant::now() + Duration::from_secs(10);
+        while let Some(event) = socket.next_event(deadline).await? {
+            match event {
+                Event::Sync { database, steps } if database == cursor.database => {
+                    for op in ls::calls(&steps) {
+                        if let Some(message) = ops::message(op, Some(thread_key), sync_group) {
+                            if message.thread_key == thread_key {
+                                messages.push(MessageSummary {
+                                    message_id: message.message_id,
+                                    ts_ms: message.ts_ms,
+                                    sender_id: message.sender_id,
+                                    text: message.text,
+                                });
+                            }
+                        }
+                    }
+                }
+                Event::TaskDone if !messages.is_empty() => break,
+                _ => {}
+            }
+        }
+        socket.close().await;
+
+        messages.sort_by_key(|message| std::cmp::Reverse(message.ts_ms));
+        let mut seen = HashSet::new();
+        messages.retain(|message| seen.insert(message.message_id.clone()));
+        messages.truncate(limit);
+        Ok(messages)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageSummary {
+    pub message_id: String,
+    pub ts_ms: i64,
+    pub sender_id: Option<String>,
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

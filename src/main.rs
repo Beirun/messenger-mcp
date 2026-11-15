@@ -170,10 +170,59 @@ impl Messenger {
         &self,
         Parameters(ReadMessagesArgs { chat_id, limit }): Parameters<ReadMessagesArgs>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-            "read_messages is not implemented yet (chat_id={chat_id}, limit={})",
-            limit.unwrap_or(20)
-        ))]))
+        let path = match auth::cookies_path() {
+            Ok(path) => path,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "cannot resolve the cookie path: {err:#}"
+                ))]));
+            }
+        };
+        let jar = match CookieJar::load(&path) {
+            Ok(jar) if jar.missing_required().is_empty() => jar,
+            Ok(_) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "required cookies are missing; run `messenger-mcp login`",
+                )]));
+            }
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not load cookies from {}: {err:#}",
+                    path.display()
+                ))]));
+            }
+        };
+        let client = match Client::new(jar) {
+            Ok(client) => client,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not build the client: {err:#}"
+                ))]));
+            }
+        };
+        let limit = limit.unwrap_or(20) as usize;
+        match client.read_messages(&chat_id, limit, 1).await {
+            Ok(messages) if messages.is_empty() => {
+                Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                    "no messages returned for {chat_id}; it may be an end-to-end encrypted chat, which is not supported yet"
+                ))]))
+            }
+            Ok(messages) => {
+                let mut lines = vec![format!("{} messages", messages.len())];
+                for message in &messages {
+                    let when = format_ms(message.ts_ms);
+                    let sender = message.sender_id.clone().unwrap_or_else(|| "?".to_string());
+                    let text = message.text.clone().unwrap_or_else(|| "(no text)".to_string());
+                    lines.push(format!("- {when} {sender}: {text}"));
+                }
+                Ok(CallToolResult::success(vec![ContentBlock::text(
+                    lines.join("\n"),
+                )]))
+            }
+            Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "read_messages failed: {err:#}"
+            ))])),
+        }
     }
 
     #[tool(description = "Send a text message to a chat")]
