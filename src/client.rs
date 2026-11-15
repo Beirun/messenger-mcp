@@ -26,11 +26,18 @@ impl SessionState {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Tokens {
+    pub fb_dtsg: String,
+    pub lsd: String,
+}
+
 #[derive(Debug)]
 pub struct SessionReport {
     pub status: u16,
     pub bytes: usize,
     pub state: SessionState,
+    pub tokens: Option<Tokens>,
 }
 
 pub struct Client {
@@ -73,8 +80,26 @@ impl Client {
             status,
             bytes: body.len(),
             state: classify(&url, &body),
+            tokens: extract_tokens(&body),
         })
     }
+}
+
+fn extract_tokens(html: &str) -> Option<Tokens> {
+    Some(Tokens {
+        fb_dtsg: token_after(html, "DTSGInitialData")?,
+        lsd: token_after(html, "[\"LSD\",[],{")?,
+    })
+}
+
+fn token_after(html: &str, marker: &str) -> Option<String> {
+    const KEY: &str = "\"token\":\"";
+    let start = html.find(marker)? + marker.len();
+    let rest = &html[start..];
+    let start = rest.find(KEY)? + KEY.len();
+    let rest = &rest[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 fn classify(url: &str, body: &str) -> SessionState {
@@ -129,5 +154,22 @@ mod tests {
             ),
             SessionState::Interstitial
         );
+    }
+
+    #[test]
+    fn extracts_tokens_from_the_page() {
+        let html = r#"["DTSGInitialData",[],{"token":"abc123"},258],["LSD",[],{"token":"lsd456"}]"#;
+        assert_eq!(
+            extract_tokens(html),
+            Some(Tokens {
+                fb_dtsg: "abc123".to_string(),
+                lsd: "lsd456".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn reports_missing_tokens() {
+        assert_eq!(extract_tokens("<html></html>"), None);
     }
 }

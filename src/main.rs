@@ -80,12 +80,21 @@ impl Messenger {
             lines.push("required cookies: c_user, xs present".to_string());
             match Client::new(jar) {
                 Ok(client) => match client.check_session().await {
-                    Ok(report) => lines.push(format!(
-                        "session: {} (HTTP {}, {} KB)",
-                        report.state.label(),
-                        report.status,
-                        report.bytes / 1024
-                    )),
+                    Ok(report) => {
+                        lines.push(format!(
+                            "session: {} (HTTP {}, {} KB)",
+                            report.state.label(),
+                            report.status,
+                            report.bytes / 1024
+                        ));
+                        if report.state == client::SessionState::Active {
+                            lines.push(if report.tokens.is_some() {
+                                "api tokens: found".to_string()
+                            } else {
+                                "api tokens: missing".to_string()
+                            });
+                        }
+                    }
                     Err(err) => lines.push(format!("session: check failed: {err:#}")),
                 },
                 Err(err) => lines.push(format!("session: check failed: {err:#}")),
