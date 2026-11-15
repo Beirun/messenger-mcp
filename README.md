@@ -40,7 +40,8 @@ then `tools/list`), or point any MCP client at it.
 ## Configuration
 
 `MESSENGER_COOKIES`: path to a file with the cookies of a logged-in Messenger session.
-Nothing reads it yet.
+Both the JSON export format and the Netscape `cookies.txt` format are accepted. `status`
+reports what it finds there.
 
 ## Roadmap
 

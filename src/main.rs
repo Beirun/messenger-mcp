@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -7,6 +9,10 @@ use rmcp::{
     transport::stdio,
 };
 use tracing_subscriber::EnvFilter;
+
+mod auth;
+
+use auth::CookieJar;
 
 #[derive(Clone)]
 struct Messenger {
@@ -38,13 +44,38 @@ impl Messenger {
         }
     }
 
-    #[tool(description = "Report login/config state for the Messenger client")]
+    #[tool(description = "Report login and configuration state")]
     async fn status(&self) -> Result<CallToolResult, McpError> {
-        let text = match std::env::var("MESSENGER_COOKIES") {
-            Ok(path) => format!("cookies configured: {path}; client not implemented yet"),
-            Err(_) => "MESSENGER_COOKIES not set; client not implemented yet".to_string(),
+        let Some(path) = std::env::var_os("MESSENGER_COOKIES") else {
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
+                "no cookie file configured; set MESSENGER_COOKIES",
+            )]));
         };
-        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+        let path = PathBuf::from(path);
+        let jar = match CookieJar::load(&path) {
+            Ok(jar) => jar,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not load cookies from {}: {err:#}",
+                    path.display()
+                ))]));
+            }
+        };
+        let mut lines = vec![
+            format!("cookie file: {}", path.display()),
+            format!("cookies loaded: {}", jar.len()),
+            format!("user id: {}", jar.user_id().unwrap_or("unknown")),
+        ];
+        let missing = jar.missing_required();
+        if missing.is_empty() {
+            lines.push("required cookies: c_user, xs present".to_string());
+        } else {
+            lines.push(format!("required cookies missing: {}", missing.join(", ")));
+        }
+        lines.push("session: not verified; network checks are not implemented yet".to_string());
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            lines.join("\n"),
+        )]))
     }
 
     #[tool(description = "List recent chats")]
