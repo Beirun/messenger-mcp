@@ -9,9 +9,11 @@ use rmcp::{
 use tracing_subscriber::EnvFilter;
 
 mod auth;
+mod client;
 mod login;
 
 use auth::CookieJar;
+use client::Client;
 
 #[derive(Clone)]
 struct Messenger {
@@ -76,10 +78,22 @@ impl Messenger {
         let missing = jar.missing_required();
         if missing.is_empty() {
             lines.push("required cookies: c_user, xs present".to_string());
+            match Client::new(jar) {
+                Ok(client) => match client.check_session().await {
+                    Ok(report) => lines.push(format!(
+                        "session: {} (HTTP {}, {} KB)",
+                        report.state.label(),
+                        report.status,
+                        report.bytes / 1024
+                    )),
+                    Err(err) => lines.push(format!("session: check failed: {err:#}")),
+                },
+                Err(err) => lines.push(format!("session: check failed: {err:#}")),
+            }
         } else {
             lines.push(format!("required cookies missing: {}", missing.join(", ")));
+            lines.push("session: not checked".to_string());
         }
-        lines.push("session: not verified; network checks are not implemented yet".to_string());
         Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))

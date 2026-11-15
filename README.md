@@ -17,7 +17,7 @@ the account's devices before it can read or send there.
 
 | Tool | Status | Arguments | Description |
 | --- | --- | --- | --- |
-| `status` | working | none | Reports login and configuration state. |
+| `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
 | `list_chats` | stub | none | List recent conversations. |
 | `read_messages` | stub | `chat_id`, `limit` | Read messages from a chat. |
 | `send_message` | stub | `chat_id`, `text` | Send a text message. |
