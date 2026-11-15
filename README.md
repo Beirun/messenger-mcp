@@ -18,7 +18,7 @@ the account's devices before it can read or send there.
 | Tool | Status | Arguments | Description |
 | --- | --- | --- | --- |
 | `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
-| `list_chats` | stub | none | List recent conversations. |
+| `list_chats` | working | none | List recent conversations. |
 | `read_messages` | stub | `chat_id`, `limit` | Read messages from a chat. |
 | `send_message` | stub | `chat_id`, `text` | Send a text message. |
 
@@ -74,3 +74,9 @@ then `tools/list`), or point any MCP client at it.
 
 Unofficial, not affiliated with Meta. Automating a personal account breaks Messenger's
 terms and can get the account restricted or banned.
+
+## License
+
+AGPL-3.0-only. The LightSpeed protocol client is
+[`messenger-client`](https://github.com/rgryta/messenger-sync), which is AGPL-3.0 because it
+was ported from mautrix-meta, so this project carries the same license.

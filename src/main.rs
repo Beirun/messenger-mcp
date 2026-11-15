@@ -110,9 +110,59 @@ impl Messenger {
 
     #[tool(description = "List recent chats")]
     async fn list_chats(&self) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::error(vec![ContentBlock::text(
-            "list_chats is not implemented yet",
-        )]))
+        let path = match auth::cookies_path() {
+            Ok(path) => path,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "cannot resolve the cookie path: {err:#}"
+                ))]));
+            }
+        };
+        let jar = match CookieJar::load(&path) {
+            Ok(jar) if jar.missing_required().is_empty() => jar,
+            Ok(_) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "required cookies are missing; run `messenger-mcp login`",
+                )]));
+            }
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not load cookies from {}: {err:#}",
+                    path.display()
+                ))]));
+            }
+        };
+        let client = match Client::new(jar) {
+            Ok(client) => client,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not build the client: {err:#}"
+                ))]));
+            }
+        };
+        match client.list_threads().await {
+            Ok(threads) => {
+                let mut lines = vec![format!("{} chats", threads.len())];
+                for thread in threads.iter().take(50) {
+                    let kind = if thread.is_group { "group" } else { "direct" };
+                    let title = thread.title.clone().unwrap_or_else(|| "(untitled)".to_string());
+                    let when = thread
+                        .last_activity_ms
+                        .map(format_ms)
+                        .unwrap_or_else(|| "-".to_string());
+                    lines.push(format!(
+                        "- {title} [{kind}] {when} key={}",
+                        thread.thread_key
+                    ));
+                }
+                Ok(CallToolResult::success(vec![ContentBlock::text(
+                    lines.join("\n"),
+                )]))
+            }
+            Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "list_chats failed: {err:#}"
+            ))])),
+        }
     }
 
     #[tool(description = "Read messages from a chat")]
@@ -136,6 +186,12 @@ impl Messenger {
             text.chars().count()
         ))]))
     }
+}
+
+fn format_ms(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 #[tool_handler]
