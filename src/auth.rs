@@ -1,6 +1,17 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+
+pub fn cookies_path() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("MESSENGER_COOKIES") {
+        return Ok(path.into());
+    }
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .context("HOME is not set")?;
+    Ok(base.join("messenger-mcp/cookies.json"))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cookie {

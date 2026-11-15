@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -47,12 +45,20 @@ impl Messenger {
 
     #[tool(description = "Report login and configuration state")]
     async fn status(&self) -> Result<CallToolResult, McpError> {
-        let Some(path) = std::env::var_os("MESSENGER_COOKIES") else {
-            return Ok(CallToolResult::success(vec![ContentBlock::text(
-                "no cookie file configured; set MESSENGER_COOKIES",
-            )]));
+        let path = match auth::cookies_path() {
+            Ok(path) => path,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "cannot resolve the cookie path: {err:#}"
+                ))]));
+            }
         };
-        let path = PathBuf::from(path);
+        if !path.exists() {
+            return Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "no cookie file at {}; run `messenger-mcp login`",
+                path.display()
+            ))]));
+        }
         let jar = match CookieJar::load(&path) {
             Ok(jar) => jar,
             Err(err) => {

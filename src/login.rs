@@ -37,7 +37,9 @@ async fn capture(profile: &Path) -> Result<()> {
     let (port, path) = wait_for_devtools(&port_file)?;
     let mut ws = connect_ws(port, &path).await?;
 
-    let outcome = poll_and_save(&mut ws).await;
+    let outcome = poll_and_save(&mut ws)
+        .await
+        .context("browser closed before sign-in completed");
     let _ = ws
         .send(Message::Text(json!({"id": 0, "method": "Browser.close"}).to_string().into()))
         .await;
@@ -58,15 +60,14 @@ async fn poll_and_save(ws: &mut Ws) -> Result<()> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
 
-    let saved = save_cookies(&cookies)?;
+    let (saved, count) = save_cookies(&cookies)?;
     let user_id = cookies
         .iter()
         .find(|c| c.get("name").and_then(Value::as_str) == Some("c_user"))
         .and_then(|c| c.get("value").and_then(Value::as_str))
         .unwrap_or("unknown");
     println!(
-        "saved {} cookies for user {user_id} to {}",
-        cookies.len(),
+        "saved {count} cookies for user {user_id} to {}",
         saved.display()
     );
     Ok(())
@@ -86,6 +87,7 @@ fn launch_chrome(chrome: &Path, profile: &Path) -> Result<Child> {
         .arg(format!("--user-data-dir={}", profile.display()))
         .arg("--no-first-run")
         .arg("--no-default-browser-check")
+        .arg("--disable-blink-features=AutomationControlled")
         .arg(LOGIN_URL)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -169,13 +171,13 @@ fn is_logged_in(cookies: &[Value]) -> bool {
     has("c_user") && has("xs")
 }
 
-fn save_cookies(cookies: &[Value]) -> Result<PathBuf> {
-    let path = cookies_path()?;
-    write_cookies(cookies, &path)?;
-    Ok(path)
+fn save_cookies(cookies: &[Value]) -> Result<(PathBuf, usize)> {
+    let path = crate::auth::cookies_path()?;
+    let count = write_cookies(cookies, &path)?;
+    Ok((path, count))
 }
 
-fn write_cookies(cookies: &[Value], path: &Path) -> Result<()> {
+fn write_cookies(cookies: &[Value], path: &Path) -> Result<usize> {
     let relevant: Vec<Value> = cookies
         .iter()
         .filter(|c| {
@@ -203,18 +205,7 @@ fn write_cookies(cookies: &[Value], path: &Path) -> Result<()> {
     fs::write(path, serde_json::to_vec_pretty(&relevant)?)
         .with_context(|| format!("writing {}", path.display()))?;
     fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    Ok(())
-}
-
-fn cookies_path() -> Result<PathBuf> {
-    if let Some(path) = std::env::var_os("MESSENGER_COOKIES") {
-        return Ok(path.into());
-    }
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .context("HOME is not set")?;
-    Ok(base.join("messenger-mcp/cookies.json"))
+    Ok(relevant.len())
 }
 
 fn profile_dir() -> Result<PathBuf> {
