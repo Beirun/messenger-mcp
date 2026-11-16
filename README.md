@@ -18,9 +18,9 @@ the account's devices before it can read or send there.
 | Tool | Status | Arguments | Description |
 | --- | --- | --- | --- |
 | `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
-| `list_chats` | working | none | List recent conversations. |
+| `list_chats` | working | none | List recent conversations, naming direct chats after the other participant. |
 | `read_messages` | experimental | `chat_id`, `limit`, `backend` | Use `browser` for encrypted conversations or `gateway` (default) for supported chats. |
-| `send_message` | implemented, not live-tested | `chat_id`, `text` | Send a text message to a group chat. |
+| `send_message` | working for group chats | `chat_id`, `text` | Send a text message and read the thread back to confirm it arrived. |
 
 ## Requirements
 

@@ -413,6 +413,26 @@ pub struct ThreadSummary {
     pub sync_group: u8,
 }
 
+fn boxed_string(value: &Value) -> Option<&str> {
+    match value {
+        Value::Array(items) if items.len() == 2 && items[0].as_u64() == Some(19) => {
+            items[1].as_str()
+        }
+        _ => None,
+    }
+}
+
+/// `verifyHybridThreadExists`: the encrypted thread key and its other participant.
+fn hybrid_peer(op: &[Value]) -> Option<(&str, &str)> {
+    if ops::name(op)? != "verifyHybridThreadExists" {
+        return None;
+    }
+    let thread = boxed_string(op.get(2)?)?;
+    let peer = boxed_string(op.get(3)?)?;
+    let numeric = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    (numeric(thread) && numeric(peer)).then_some((thread, peer))
+}
+
 fn extract_tokens(html: &str) -> Option<Tokens> {
     Some(Tokens {
         fb_dtsg: token_after(html, "DTSGInitialData")?,

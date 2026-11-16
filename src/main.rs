@@ -315,7 +315,7 @@ impl Messenger {
                 "sent message {id} to {chat_id}"
             ))])),
             Ok(None) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-                "sent to {chat_id}; the message did not show up on the sync stream before the timeout"
+                "sent to {chat_id}; reading the thread back did not confirm delivery"
             ))])),
             Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "send_message failed: {err:#}"
