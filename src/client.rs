@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -108,23 +108,50 @@ impl Client {
         let config =
             page::scrape(&html).map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
 
-        let mut threads = Vec::new();
+        let mut all = Vec::new();
         for preloader in &config.preloaders {
             if !matches!(preloader.database, 1 | 95) {
                 continue;
             }
             let steps = self.snapshot(&config, preloader).await?;
             let sync_group = u8::try_from(preloader.database).unwrap_or(1);
-            for op in ls::calls(&steps) {
-                if let Some(thread) = ops::thread(op, sync_group) {
-                    threads.push(ThreadSummary {
-                        thread_key: thread.thread_key,
-                        title: thread.title,
-                        is_group: thread.is_group,
-                        last_activity_ms: thread.last_activity_ms,
-                        sync_group,
-                    });
-                }
+            all.extend(
+                ls::calls(&steps)
+                    .into_iter()
+                    .map(|op| (op.to_vec(), sync_group)),
+            );
+        }
+
+        let mut contacts = HashMap::new();
+        let mut peers = HashMap::new();
+        for (op, _) in &all {
+            if let Some(participant) = ops::participant(op)
+                && let Some(name) = participant.name
+            {
+                contacts.insert(participant.fb_user_id, name);
+            }
+            if let Some((thread, peer)) = hybrid_peer(op) {
+                peers.insert(thread.to_owned(), peer.to_owned());
+            }
+        }
+
+        let mut threads = Vec::new();
+        for (op, sync_group) in &all {
+            if let Some(thread) = ops::thread(op, *sync_group) {
+                // A direct thread carries no title; its other participant names it.
+                let title = thread.title.or_else(|| {
+                    peers
+                        .get(&thread.thread_key)
+                        .and_then(|peer| contacts.get(peer))
+                        .cloned()
+                });
+                threads.push(ThreadSummary {
+                    thread_key: thread.thread_key,
+                    title,
+                    is_group: thread.is_group,
+                    last_activity_ms: thread.last_activity_ms,
+                    sync_group: *sync_group,
+                });
             }
         }
 
@@ -325,18 +352,38 @@ impl Client {
             .await
             .context("sending the message task")?;
 
+        // The send task's own answer is not the message; read the thread back instead.
+        let ack = TokioInstant::now() + Duration::from_secs(5);
+        while let Some(event) = socket.next_event(ack).await? {
+            if matches!(event, Event::TaskDone) {
+                break;
+            }
+        }
+
+        let me = self.jar.user_id();
+        let sent_after = otid / 1000 - 5_000;
+        socket
+            .send_task(
+                ls::FETCH_MESSAGES,
+                &format!("mrq.{key}"),
+                ls::fetch_messages(key, Utc::now().timestamp_millis(), sync_group),
+            )
+            .await
+            .context("requesting the thread")?;
+
         let mut sent_id = None;
-        let deadline = TokioInstant::now() + Duration::from_secs(15);
+        let deadline = TokioInstant::now() + Duration::from_secs(10);
         while let Some(event) = socket.next_event(deadline).await? {
             match event {
                 Event::Sync { database, steps } if database == cursor.database => {
                     for op in ls::calls(&steps) {
-                        if let Some(message) = ops::message(op, Some(thread_key), sync_group) {
-                            if message.thread_key == thread_key
-                                && message.text.as_deref() == Some(text)
-                            {
-                                sent_id = Some(message.message_id);
-                            }
+                        if let Some(message) = ops::message(op, Some(thread_key), sync_group)
+                            && message.thread_key == thread_key
+                            && message.text.as_deref() == Some(text)
+                            && message.sender_id.as_deref() == me
+                            && message.ts_ms >= sent_after
+                        {
+                            sent_id = Some(message.message_id);
                         }
                     }
                 }
@@ -447,6 +494,30 @@ mod tests {
                 lsd: "lsd456".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn reads_the_encrypted_thread_peer() {
+        let op: Vec<Value> = serde_json::from_str(
+            r#"[5,"verifyHybridThreadExists",[19,"5986541808137198"],[19,"100010550196790"],[19,"15"],[2,1],[9],false]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            hybrid_peer(&op),
+            Some(("5986541808137198", "100010550196790"))
+        );
+    }
+
+    #[test]
+    fn ignores_other_ops_and_malformed_peers() {
+        let group: Vec<Value> =
+            serde_json::from_str(r#"[5,"updateOrInsertThread",[19,"1"],[19,"2"]]"#).unwrap();
+        assert_eq!(hybrid_peer(&group), None);
+        let malformed: Vec<Value> =
+            serde_json::from_str(r#"[5,"verifyHybridThreadExists",[19,"x"],[19,"2"]]"#).unwrap();
+        assert_eq!(hybrid_peer(&malformed), None);
+        let short: Vec<Value> = serde_json::from_str(r#"[5,"verifyHybridThreadExists"]"#).unwrap();
+        assert_eq!(hybrid_peer(&short), None);
     }
 
     #[test]
