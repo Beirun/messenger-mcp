@@ -7,11 +7,12 @@ Status: early development. Browser reading returns the messages currently loaded
 
 ## How it works
 
-The client is meant to talk to Messenger the way the web client does: one WebSocket
-connection to Meta's LightSpeed gateway handles the inbox and sends messages, using the
-cookies of a logged-in session. Group chats work through that connection with no extra
-setup. One-to-one chats are end-to-end encrypted, so the client has to register as one of
-the account's devices before it can read or send there.
+The client talks to Messenger the way the web client does: one WebSocket connection to Meta's
+LightSpeed gateway handles the inbox and sends messages, using the cookies of a logged-in
+session. Group chats work through that connection with no extra setup. One-to-one chats are
+end-to-end encrypted, and Meta drops plaintext messages sent to them. Those go through the
+`browser` backend instead, which drives the Chrome profile that `login` created and lets the
+web client do the encryption.
 
 ## Tools
 
@@ -22,41 +23,78 @@ the account's devices before it can read or send there.
 | `read_messages` | experimental | `chat_id`, `limit`, `backend` | Use `browser` for encrypted conversations or `gateway` (default) for supported chats. |
 | `send_message` | working | `chat_id`, `text`, `backend` | Send a text message and read the thread back to confirm it arrived. Use `browser` for encrypted conversations. |
 
-## Requirements
+## Setup
 
-Rust 1.88 or later (rmcp's minimum; this crate uses edition 2024) and network access to
-Meta's Messenger endpoints.
+### 1. Prerequisites
 
-Browser reads and sends also need a Chrome or Chromium binary and the profile that `login`
-creates. Encrypted conversations require unlocking that profile once with your Messenger PIN.
-The browser backend returns only the messages currently rendered in the conversation, so long
-histories are partial, and opening a chat can mark it read. Sends through the browser reload
-the thread before reporting success.
+- Rust 1.100 or newer, installed through rustup. `rust-toolchain.toml` pins the exact
+  version, so `cargo` uses it without further configuration.
+- A Chrome or Chromium binary. It is only needed for `login` and for the browser backend;
+  the gateway tools never launch one. The binary is looked up in `MESSENGER_CHROME`, then in
+  an agent-browser install, then on `PATH`.
+- Network access to Meta's Messenger endpoints.
 
-## Build and run
+The built binary links against glibc, `libm` and `libgcc` only. There is no OpenSSL,
+database, Node or Python dependency.
+
+### 2. Build
 
 ```sh
 cargo build --release
 ```
 
-Sign in once and save the session cookies:
+The result is `target/release/messenger-mcp`. It speaks MCP over stdio and accepts one
+optional subcommand, `login`.
+
+### 3. Sign in and save the session
 
 ```sh
-messenger-mcp login
+./target/release/messenger-mcp login
 ```
 
-That opens Chrome at messenger.com and waits while you sign in. When the session appears,
-it saves the cookies with `600` permissions and closes the window. It uses the Chrome for
-Testing that agent-browser installed, falling back to a system Chrome.
+Chrome opens at messenger.com and waits for you to sign in. When the session exists it writes
+`~/.config/messenger-mcp/cookies.json` with `600` permissions and closes the window. It waits
+300 seconds by default; raise `MESSENGER_LOGIN_TIMEOUT` if you need longer.
 
-Then register the server:
+- If Messenger asks for your PIN to restore encrypted chats, enter it in that window. The
+  profile at `~/.local/share/messenger-mcp/chrome-profile` keeps the encrypted state, and the
+  browser backend reuses it later without asking again.
+- Chrome for Testing rejects Google sign-in with "This browser or app may not be secure". Use
+  the email and password form, or point `MESSENGER_CHROME` at a regular Chrome install.
+- Only one process may use that profile at a time. A stale `SingletonLock` in it makes the
+  browser tools refuse to start until Chrome using it is closed.
+
+### 4. Register the server
 
 ```sh
-claude mcp add -s user messenger-mcp -- /path/to/messenger-mcp/target/release/messenger-mcp
+claude mcp add -s user messenger-mcp -- "$PWD/target/release/messenger-mcp"
 ```
 
-The binary speaks MCP over stdio. To test it by hand, pipe JSON-RPC on stdin (`initialize`,
-then `tools/list`), or point any MCP client at it.
+Other MCP clients need a stdio entry with no arguments:
+
+```json
+{
+  "mcpServers": {
+    "messenger-mcp": {
+      "command": "/path/to/messenger-mcp/target/release/messenger-mcp"
+    }
+  }
+}
+```
+
+### 5. Check it works
+
+Start with `status`. It reports the cookie path, whether `c_user` and `xs` are present, and
+what Messenger says about the session. `list_chats` should then return recent conversations.
+For an encrypted conversation, call `read_messages` with `"backend": "browser"`; sending in
+one takes `send_message` with the same backend.
+
+## Limits of the browser backend
+
+It returns only the messages currently rendered in the conversation, so long histories are
+partial. Opening a chat can mark it read. Sends reload the thread and report success only if
+the message is rendered afterwards. Every browser call holds the profile exclusively, so two
+calls cannot run at once.
 
 ## Configuration
 
@@ -72,7 +110,7 @@ then `tools/list`), or point any MCP client at it.
 2. Read the inbox and group-chat history.
 3. Send text in group chats.
 4. Send images and attachments in group chats.
-5. E2EE 1:1 chats: register as a device, then read and send text.
+5. E2EE 1:1 chats without the browser: register as a device for native reads and sends.
 6. E2EE media.
 7. A read-only mode.
 
