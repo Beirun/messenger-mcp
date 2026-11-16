@@ -3,7 +3,7 @@
 An MCP server for a personal Facebook Messenger account, written in Rust on the
 [rmcp](https://github.com/modelcontextprotocol/rust-sdk) SDK.
 
-Status: early scaffold. Only `status` works; the chat tools are stubs.
+Status: early development. Browser reading returns the messages currently loaded in Messenger.
 
 ## How it works
 
@@ -19,13 +19,18 @@ the account's devices before it can read or send there.
 | --- | --- | --- | --- |
 | `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
 | `list_chats` | working | none | List recent conversations. |
-| `read_messages` | working (group chats) | `chat_id`, `limit` | Read messages from a chat. End-to-end encrypted 1:1 chats return nothing for now. |
+| `read_messages` | experimental | `chat_id`, `limit`, `backend` | Use `browser` for encrypted conversations or `gateway` (default) for supported chats. |
 | `send_message` | implemented, not live-tested | `chat_id`, `text` | Send a text message to a group chat. |
 
 ## Requirements
 
 Rust 1.88 or later (rmcp's minimum; this crate uses edition 2024) and network access to
 Meta's Messenger endpoints.
+
+Browser reads also need a Chrome or Chromium binary and the profile that `login` creates.
+Encrypted conversations require unlocking that profile once with your Messenger PIN. The
+browser backend returns only the messages currently rendered in the conversation, so long
+histories are partial, and opening a chat can mark it read.
 
 ## Build and run
 

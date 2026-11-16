@@ -9,6 +9,7 @@ use rmcp::{
 use tracing_subscriber::EnvFilter;
 
 mod auth;
+mod browser;
 mod client;
 mod login;
 
@@ -25,8 +26,17 @@ struct Messenger {
 struct ReadMessagesArgs {
     /// Chat or thread id
     chat_id: String,
-    /// Maximum number of messages to return
+    /// Maximum number of messages to return (1 to 100)
     limit: Option<u32>,
+    /// Use browser for encrypted conversations, gateway for supported conversations
+    backend: Option<ReadBackend>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ReadBackend {
+    Gateway,
+    Browser,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -168,8 +178,15 @@ impl Messenger {
     #[tool(description = "Read messages from a chat")]
     async fn read_messages(
         &self,
-        Parameters(ReadMessagesArgs { chat_id, limit }): Parameters<ReadMessagesArgs>,
+        Parameters(ReadMessagesArgs { chat_id, limit, backend }): Parameters<ReadMessagesArgs>,
     ) -> Result<CallToolResult, McpError> {
+        if chat_id.is_empty() || !chat_id.bytes().all(|b| b.is_ascii_digit()) || chat_id.len() > 19 {
+            return Ok(CallToolResult::error(vec![ContentBlock::text("chat_id must be a numeric thread ID")]));
+        }
+        let limit = limit.unwrap_or(20);
+        if !(1..=100).contains(&limit) {
+            return Ok(CallToolResult::error(vec![ContentBlock::text("limit must be between 1 and 100")]));
+        }
         let path = match auth::cookies_path() {
             Ok(path) => path,
             Err(err) => {
@@ -192,6 +209,26 @@ impl Messenger {
                 ))]));
             }
         };
+        if matches!(backend, Some(ReadBackend::Browser)) {
+            return match browser::read_messages(&chat_id, limit as usize, &jar).await {
+                Ok(messages) => {
+                    let mut lines = vec![format!(
+                        "{} loaded messages, newest first; history may be incomplete",
+                        messages.len()
+                    )];
+                    for message in &messages {
+                        let text: String = message.text.chars().take(500).collect();
+                        lines.push(format!("- {text} (id {})", message.id));
+                    }
+                    Ok(CallToolResult::success(vec![ContentBlock::text(
+                        lines.join("\n"),
+                    )]))
+                }
+                Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "browser read failed: {err:#}"
+                ))])),
+            };
+        }
         let client = match Client::new(jar) {
             Ok(client) => client,
             Err(err) => {
@@ -200,8 +237,7 @@ impl Messenger {
                 ))]));
             }
         };
-        let limit = limit.unwrap_or(20) as usize;
-        match client.read_messages(&chat_id, limit, 1).await {
+        match client.read_messages(&chat_id, limit as usize, 1).await {
             Ok(messages) if messages.is_empty() => {
                 Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                     "no messages returned for {chat_id}; it may be an end-to-end encrypted chat, which is not supported yet"

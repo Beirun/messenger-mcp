@@ -19,6 +19,7 @@ pub async fn run() -> Result<()> {
     let chrome = find_chrome()?;
     let profile = profile_dir()?;
     fs::create_dir_all(&profile)?;
+    let _lock = crate::browser::lock_profile(&profile)?;
 
     let mut child = launch_chrome(&chrome, &profile)?;
     eprintln!(
@@ -208,7 +209,7 @@ fn write_cookies(cookies: &[Value], path: &Path) -> Result<usize> {
     Ok(relevant.len())
 }
 
-fn profile_dir() -> Result<PathBuf> {
+pub(crate) fn profile_dir() -> Result<PathBuf> {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
@@ -216,7 +217,7 @@ fn profile_dir() -> Result<PathBuf> {
     Ok(base.join("messenger-mcp/chrome-profile"))
 }
 
-fn find_chrome() -> Result<PathBuf> {
+pub(crate) fn find_chrome() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("MESSENGER_CHROME") {
         return Ok(path.into());
     }

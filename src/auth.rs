@@ -90,6 +90,10 @@ impl CookieJar {
         Ok(Self { cookies })
     }
 
+    pub fn cookies(&self) -> &[Cookie] {
+        &self.cookies
+    }
+
     pub fn len(&self) -> usize {
         self.cookies.len()
     }
