@@ -24,6 +24,7 @@ web client do the encryption.
 | `list_chats` | working | none | List recent conversations, naming direct chats after the other participant. |
 | `read_messages` | experimental | `chat_id`, `limit`, `backend` | Use `browser` for encrypted conversations or `gateway` (default) for supported chats. |
 | `send_message` | working | `chat_id`, `text`, `backend` | Send a text message and read the thread back to confirm it arrived. Use `browser` for encrypted conversations. |
+| `react` | working | `chat_id`, `message_id`, `emoji` | React to a message in a group chat. Encrypted one-to-one chats have no reaction path. |
 
 ## Setup
 

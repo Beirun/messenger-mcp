@@ -45,6 +45,16 @@ struct SendMessageArgs {
     backend: Option<ReadBackend>,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct ReactArgs {
+    /// Chat or thread id
+    chat_id: String,
+    /// Message id, as returned by read_messages
+    message_id: String,
+    /// One unicode emoji
+    emoji: String,
+}
+
 #[tool_router]
 impl Messenger {
     fn new() -> Self {
@@ -348,6 +358,77 @@ impl Messenger {
             ))])),
         }
     }
+
+    #[tool(description = "React to a message in a group chat")]
+    async fn react(
+        &self,
+        Parameters(ReactArgs {
+            chat_id,
+            message_id,
+            emoji,
+        }): Parameters<ReactArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        if chat_id.is_empty() || !chat_id.bytes().all(|b| b.is_ascii_digit()) || chat_id.len() > 19
+        {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "chat_id must be a numeric thread ID",
+            )]));
+        }
+        let message_id = message_id.trim();
+        if message_id.is_empty() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "message_id must not be empty",
+            )]));
+        }
+        let emoji = emoji.trim();
+        if emoji.is_empty() || emoji.chars().count() > 8 {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "emoji must be one emoji",
+            )]));
+        }
+        let path = match auth::cookies_path() {
+            Ok(path) => path,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "cannot resolve the cookie path: {err:#}"
+                ))]));
+            }
+        };
+        let jar = match CookieJar::load(&path) {
+            Ok(jar) if jar.missing_required().is_empty() => jar,
+            Ok(_) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    "required cookies are missing; run `messenger-mcp login`",
+                )]));
+            }
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not load cookies from {}: {err:#}",
+                    path.display()
+                ))]));
+            }
+        };
+        let client = match Client::new(jar) {
+            Ok(client) => client,
+            Err(err) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "could not build the client: {err:#}"
+                ))]));
+            }
+        };
+        match client.send_reaction(&chat_id, message_id, emoji, 1).await {
+            Ok(true) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "reacted {emoji} to {message_id} in {chat_id}"
+            ))])),
+            Ok(false) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "sent the reaction for {message_id} to {chat_id}; the gateway did not confirm it. \
+                 Encrypted one-to-one chats are not supported."
+            ))])),
+            Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "react failed: {err:#}"
+            ))])),
+        }
+    }
 }
 
 fn format_ms(ms: i64) -> String {
@@ -365,8 +446,8 @@ impl ServerHandler for Messenger {
                 env!("CARGO_PKG_VERSION"),
             ))
             .with_instructions(
-                "Messenger MCP: read and send Facebook Messenger messages. \
-                 Personal-account client, unofficial; not implemented yet."
+                "Messenger MCP: read, send and react on a personal Facebook Messenger account. \
+                 Unofficial client for one personal account."
                     .to_string(),
             )
     }
