@@ -7,10 +7,7 @@ use rmcp::{
 };
 use tracing_subscriber::EnvFilter;
 
-mod auth;
-mod browser;
-mod client;
-mod login;
+use messenger_cli::{auth, browser, client, login};
 
 use auth::CookieJar;
 use client::Client;

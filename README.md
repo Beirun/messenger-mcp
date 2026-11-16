@@ -1,7 +1,9 @@
 # messenger-mcp
 
 An MCP server for a personal Facebook Messenger account, written in Rust on the
-[rmcp](https://github.com/modelcontextprotocol/rust-sdk) SDK.
+[rmcp](https://github.com/modelcontextprotocol/rust-sdk) SDK. The Messenger client itself lives in
+[messenger-cli](https://github.com/Beirun/messenger-cli), which also installs a `messenger` command
+over the same cookies and browser profile.
 
 Status: early development. Browser reading returns the messages currently loaded in Messenger.
 
@@ -32,7 +34,8 @@ web client do the encryption.
 - A Chrome or Chromium binary. It is only needed for `login` and for the browser backend;
   the gateway tools never launch one. The binary is looked up in `MESSENGER_CHROME`, then in
   an agent-browser install, then on `PATH`.
-- Network access to Meta's Messenger endpoints.
+- Network access to Meta's Messenger endpoints, and to GitHub when Cargo fetches the
+  `messenger-cli` dependency.
 
 The built binary links against glibc, `libm` and `libgcc` only. There is no OpenSSL,
 database, Node or Python dependency.
