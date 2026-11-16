@@ -77,9 +77,15 @@ impl Client {
         let response = self
             .http
             .get(MESSENGER_HOME)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
             .header("Accept-Language", "en-US,en;q=0.9")
-            .header("sec-ch-ua", "\"Chromium\";v=\"157\", \"Not_A Brand\";v=\"24\"")
+            .header(
+                "sec-ch-ua",
+                "\"Chromium\";v=\"157\", \"Not_A Brand\";v=\"24\"",
+            )
             .header("sec-ch-ua-mobile", "?0")
             .header("sec-ch-ua-platform", "\"Linux\"")
             .header("Sec-Fetch-Dest", "document")
@@ -99,8 +105,8 @@ impl Client {
 
     pub async fn list_threads(&self) -> Result<Vec<ThreadSummary>> {
         let (_, _, html) = self.home_page().await?;
-        let config = page::scrape(&html)
-            .map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
+        let config =
+            page::scrape(&html).map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
 
         let mut threads = Vec::new();
         for preloader in &config.preloaders {
@@ -128,7 +134,11 @@ impl Client {
         Ok(threads)
     }
 
-    async fn snapshot(&self, config: &page::PageConfig, preloader: &page::Preloader) -> Result<Value> {
+    async fn snapshot(
+        &self,
+        config: &page::PageConfig,
+        preloader: &page::Preloader,
+    ) -> Result<Value> {
         let form = graphql::snapshot_form(config, preloader);
         let response = self
             .http
@@ -140,7 +150,10 @@ impl Client {
             .header("Sec-Fetch-Mode", "cors")
             .header("Sec-Fetch-Site", "same-origin")
             .header("X-Asbd-Id", "359341")
-            .header("X-Fb-Friendly-Name", "LSPlatformGraphQLLightspeedRequestQuery")
+            .header(
+                "X-Fb-Friendly-Name",
+                "LSPlatformGraphQLLightspeedRequestQuery",
+            )
             .header("X-Fb-Lsd", config.lsd.clone().unwrap_or_default())
             .header("Cookie", self.jar.header_for("www.messenger.com"))
             .form(&form)
@@ -149,7 +162,10 @@ impl Client {
             .context("requesting the thread snapshot")?;
 
         let status = response.status();
-        let body = response.text().await.context("reading the thread snapshot")?;
+        let body = response
+            .text()
+            .await
+            .context("reading the thread snapshot")?;
         if !status.is_success() {
             let preview: String = body.chars().take(200).collect();
             bail!("snapshot returned HTTP {status}: {preview}");
@@ -171,8 +187,8 @@ impl Client {
         let mut jar = CrateJar::from_json(&raw).context("parsing the cookie file")?;
 
         let (_, _, html) = self.home_page().await?;
-        let config = page::scrape(&html)
-            .map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
+        let config =
+            page::scrape(&html).map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
 
         let mut cursor = None;
         for preloader in &config.preloaders {
@@ -185,8 +201,8 @@ impl Client {
                 break;
             }
         }
-        let cursor = cursor
-            .with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
+        let cursor =
+            cursor.with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
 
         let mut socket = Socket::connect(&config, &mut jar)
             .await
@@ -205,9 +221,7 @@ impl Client {
             }
         }
 
-        let key: i64 = thread_key
-            .parse()
-            .context("thread key must be numeric")?;
+        let key: i64 = thread_key.parse().context("thread key must be numeric")?;
         let payload = ls::fetch_messages(key, Utc::now().timestamp_millis(), sync_group);
         socket
             .send_task(ls::FETCH_MESSAGES, &format!("mrq.{key}"), payload)
@@ -256,8 +270,8 @@ impl Client {
         let mut jar = CrateJar::from_json(&raw).context("parsing the cookie file")?;
 
         let (_, _, html) = self.home_page().await?;
-        let config = page::scrape(&html)
-            .map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
+        let config =
+            page::scrape(&html).map_err(|err| anyhow::anyhow!("reading the page: {err}"))?;
 
         let mut cursor = None;
         for preloader in &config.preloaders {
@@ -270,12 +284,10 @@ impl Client {
                 break;
             }
         }
-        let cursor = cursor
-            .with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
+        let cursor =
+            cursor.with_context(|| format!("no sync cursor for sync group {sync_group}"))?;
 
-        let key: i64 = thread_key
-            .parse()
-            .context("thread key must be numeric")?;
+        let key: i64 = thread_key.parse().context("thread key must be numeric")?;
         let otid = Utc::now().timestamp_micros();
         let has_links = text.contains("http://") || text.contains("https://");
         let payload = serde_json::json!({
@@ -320,7 +332,8 @@ impl Client {
                 Event::Sync { database, steps } if database == cursor.database => {
                     for op in ls::calls(&steps) {
                         if let Some(message) = ops::message(op, Some(thread_key), sync_group) {
-                            if message.thread_key == thread_key && message.text.as_deref() == Some(text)
+                            if message.thread_key == thread_key
+                                && message.text.as_deref() == Some(text)
                             {
                                 sent_id = Some(message.message_id);
                             }

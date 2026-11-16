@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 pub fn cookies_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("MESSENGER_COOKIES") {
@@ -27,8 +27,8 @@ pub struct CookieJar {
 
 impl CookieJar {
     pub fn load(path: &Path) -> Result<Self> {
-        let raw = std::fs::read_to_string(path)
-            .with_context(|| format!("reading {}", path.display()))?;
+        let raw =
+            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         Self::parse(&raw)
     }
 

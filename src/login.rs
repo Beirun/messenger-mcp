@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
@@ -42,7 +42,11 @@ async fn capture(profile: &Path) -> Result<()> {
         .await
         .context("browser closed before sign-in completed");
     let _ = ws
-        .send(Message::Text(json!({"id": 0, "method": "Browser.close"}).to_string().into()))
+        .send(Message::Text(
+            json!({"id": 0, "method": "Browser.close"})
+                .to_string()
+                .into(),
+        ))
         .await;
     outcome
 }
@@ -182,11 +186,9 @@ fn write_cookies(cookies: &[Value], path: &Path) -> Result<usize> {
     let relevant: Vec<Value> = cookies
         .iter()
         .filter(|c| {
-            c.get("domain")
-                .and_then(Value::as_str)
-                .is_some_and(|d| {
-                    d.contains("facebook.com") || d.contains("messenger.com") || d.contains("fb.com")
-                })
+            c.get("domain").and_then(Value::as_str).is_some_and(|d| {
+                d.contains("facebook.com") || d.contains("messenger.com") || d.contains("fb.com")
+            })
         })
         .map(|c| {
             json!({
@@ -247,10 +249,7 @@ fn agent_browser_chrome() -> Option<PathBuf> {
         if !binary.is_file() {
             continue;
         }
-        let parts: Vec<u64> = version
-            .split('.')
-            .map(|p| p.parse().unwrap_or(0))
-            .collect();
+        let parts: Vec<u64> = version.split('.').map(|p| p.parse().unwrap_or(0)).collect();
         if best.as_ref().is_none_or(|(current, _)| parts > *current) {
             best = Some((parts, binary));
         }
@@ -287,8 +286,7 @@ mod tests {
         ];
         write_cookies(&cookies, &path).unwrap();
 
-        let saved: Vec<Value> =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let saved: Vec<Value> = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(saved.len(), 2);
         assert!(saved.iter().all(|c| {
             let d = c["domain"].as_str().unwrap();

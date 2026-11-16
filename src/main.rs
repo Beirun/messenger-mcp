@@ -2,8 +2,7 @@ use rmcp::{
     ErrorData as McpError, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars,
-    tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router,
     transport::stdio,
 };
 use tracing_subscriber::EnvFilter;
@@ -155,7 +154,10 @@ impl Messenger {
                 let mut lines = vec![format!("{} chats", threads.len())];
                 for thread in threads.iter().take(50) {
                     let kind = if thread.is_group { "group" } else { "direct" };
-                    let title = thread.title.clone().unwrap_or_else(|| "(untitled)".to_string());
+                    let title = thread
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| "(untitled)".to_string());
                     let when = thread
                         .last_activity_ms
                         .map(format_ms)
@@ -178,14 +180,23 @@ impl Messenger {
     #[tool(description = "Read messages from a chat")]
     async fn read_messages(
         &self,
-        Parameters(ReadMessagesArgs { chat_id, limit, backend }): Parameters<ReadMessagesArgs>,
+        Parameters(ReadMessagesArgs {
+            chat_id,
+            limit,
+            backend,
+        }): Parameters<ReadMessagesArgs>,
     ) -> Result<CallToolResult, McpError> {
-        if chat_id.is_empty() || !chat_id.bytes().all(|b| b.is_ascii_digit()) || chat_id.len() > 19 {
-            return Ok(CallToolResult::error(vec![ContentBlock::text("chat_id must be a numeric thread ID")]));
+        if chat_id.is_empty() || !chat_id.bytes().all(|b| b.is_ascii_digit()) || chat_id.len() > 19
+        {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "chat_id must be a numeric thread ID",
+            )]));
         }
         let limit = limit.unwrap_or(20);
         if !(1..=100).contains(&limit) {
-            return Ok(CallToolResult::error(vec![ContentBlock::text("limit must be between 1 and 100")]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "limit must be between 1 and 100",
+            )]));
         }
         let path = match auth::cookies_path() {
             Ok(path) => path,
@@ -248,7 +259,10 @@ impl Messenger {
                 for message in &messages {
                     let when = format_ms(message.ts_ms);
                     let sender = message.sender_id.clone().unwrap_or_else(|| "?".to_string());
-                    let text = message.text.clone().unwrap_or_else(|| "(no text)".to_string());
+                    let text = message
+                        .text
+                        .clone()
+                        .unwrap_or_else(|| "(no text)".to_string());
                     lines.push(format!("- {when} {sender}: {text}"));
                 }
                 Ok(CallToolResult::success(vec![ContentBlock::text(
@@ -297,9 +311,9 @@ impl Messenger {
             }
         };
         match client.send_text(&chat_id, &text, 1).await {
-            Ok(Some(id)) => Ok(CallToolResult::success(vec![ContentBlock::text(
-                format!("sent message {id} to {chat_id}"),
-            )])),
+            Ok(Some(id)) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                "sent message {id} to {chat_id}"
+            ))])),
             Ok(None) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "sent to {chat_id}; the message did not show up on the sync stream before the timeout"
             ))])),
