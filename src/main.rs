@@ -44,6 +44,8 @@ struct SendMessageArgs {
     chat_id: String,
     /// Message text
     text: String,
+    /// Use browser for encrypted conversations, gateway for supported conversations
+    backend: Option<ReadBackend>,
 }
 
 #[tool_router]
@@ -278,8 +280,23 @@ impl Messenger {
     #[tool(description = "Send a text message to a chat")]
     async fn send_message(
         &self,
-        Parameters(SendMessageArgs { chat_id, text }): Parameters<SendMessageArgs>,
+        Parameters(SendMessageArgs {
+            chat_id,
+            text,
+            backend,
+        }): Parameters<SendMessageArgs>,
     ) -> Result<CallToolResult, McpError> {
+        if chat_id.is_empty() || !chat_id.bytes().all(|b| b.is_ascii_digit()) || chat_id.len() > 19
+        {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "chat_id must be a numeric thread ID",
+            )]));
+        }
+        if text.trim().is_empty() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "text must not be empty",
+            )]));
+        }
         let path = match auth::cookies_path() {
             Ok(path) => path,
             Err(err) => {
@@ -302,6 +319,17 @@ impl Messenger {
                 ))]));
             }
         };
+        if matches!(backend, Some(ReadBackend::Browser)) {
+            return match browser::send_message(&chat_id, &text, &jar).await {
+                Ok(message) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                    "sent to {chat_id} through the browser (message {})",
+                    message.id
+                ))])),
+                Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "browser send failed: {err:#}"
+                ))])),
+            };
+        }
         let client = match Client::new(jar) {
             Ok(client) => client,
             Err(err) => {
@@ -315,7 +343,8 @@ impl Messenger {
                 "sent message {id} to {chat_id}"
             ))])),
             Ok(None) => Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-                "sent to {chat_id}; reading the thread back did not confirm delivery"
+                "sent to {chat_id}; reading the thread back did not confirm delivery. \
+                 If this is an encrypted chat, send with backend=browser"
             ))])),
             Err(err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "send_message failed: {err:#}"

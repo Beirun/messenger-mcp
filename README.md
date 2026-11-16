@@ -20,17 +20,18 @@ the account's devices before it can read or send there.
 | `status` | working | none | Checks the saved cookies against Messenger and reports the session state. |
 | `list_chats` | working | none | List recent conversations, naming direct chats after the other participant. |
 | `read_messages` | experimental | `chat_id`, `limit`, `backend` | Use `browser` for encrypted conversations or `gateway` (default) for supported chats. |
-| `send_message` | working for group chats | `chat_id`, `text` | Send a text message and read the thread back to confirm it arrived. |
+| `send_message` | working | `chat_id`, `text`, `backend` | Send a text message and read the thread back to confirm it arrived. Use `browser` for encrypted conversations. |
 
 ## Requirements
 
 Rust 1.88 or later (rmcp's minimum; this crate uses edition 2024) and network access to
 Meta's Messenger endpoints.
 
-Browser reads also need a Chrome or Chromium binary and the profile that `login` creates.
-Encrypted conversations require unlocking that profile once with your Messenger PIN. The
-browser backend returns only the messages currently rendered in the conversation, so long
-histories are partial, and opening a chat can mark it read.
+Browser reads and sends also need a Chrome or Chromium binary and the profile that `login`
+creates. Encrypted conversations require unlocking that profile once with your Messenger PIN.
+The browser backend returns only the messages currently rendered in the conversation, so long
+histories are partial, and opening a chat can mark it read. Sends through the browser reload
+the thread before reporting success.
 
 ## Build and run
 
