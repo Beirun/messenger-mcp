@@ -7,7 +7,7 @@ license = "AGPL-3.0-only"
 [dependencies]
 anyhow = "1"
 chrono = "0.4.45"
-messenger-cli = { git = "https://github.com/Beirun/messenger-cli", rev = "5517a54662565c9c2a0e0186968d90ca9e6982ba" }
+messenger-cli = { git = "https://github.com/Beirun/messenger-cli", rev = "1a1ab75359ba341a8d04dcd8286085f029f8b4e6" }
 rmcp = { version = "3.10", features = ["transport-io"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

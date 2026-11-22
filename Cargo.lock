@@ -1348,7 +1348,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "messenger-cli"
 version = "0.1.0"
-source = "git+https://github.com/Beirun/messenger-cli?rev=5517a54662565c9c2a0e0186968d90ca9e6982ba#5517a54662565c9c2a0e0186968d90ca9e6982ba"
+source = "git+https://github.com/Beirun/messenger-cli?rev=1a1ab75359ba341a8d04dcd8286085f029f8b4e6#1a1ab75359ba341a8d04dcd8286085f029f8b4e6"
 dependencies = [
  "anyhow",
  "chrono",
