@@ -267,7 +267,11 @@ impl Messenger {
                 let mut lines = vec![format!("{} messages", messages.len())];
                 for message in &messages {
                     let when = format_ms(message.ts_ms);
-                    let sender = message.sender_id.clone().unwrap_or_else(|| "?".to_string());
+                    let sender = message
+                        .sender_name
+                        .clone()
+                        .or_else(|| message.sender_id.clone())
+                        .unwrap_or_else(|| "?".to_string());
                     let text = message
                         .text
                         .clone()
